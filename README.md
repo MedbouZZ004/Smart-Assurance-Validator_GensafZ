@@ -67,4 +67,28 @@ python demo_morocco.py
 ```
 This will create PDF files on your Desktop for testing purposes.
 
+## Execution : 
+Case 1 : 
+<img width="925" height="612" alt="image" src="https://github.com/user-attachments/assets/89fb44a9-33c9-403b-85db-a35890ef5619" />
+
+<img width="1473" height="742" alt="image" src="https://github.com/user-attachments/assets/8594f5cb-53c4-4aef-8376-ec97ac418f0b" />
+Résultat : 
+<img width="1437" height="825" alt="image" src="https://github.com/user-attachments/assets/c72685e2-24a0-4b14-9668-e5c30a0d0a46" />
+
+Case 2 : 
+<img width="718" height="547" alt="image" src="https://github.com/user-attachments/assets/9a2caae6-bf6d-421d-a84a-73342756c3ad" />
+
+Résultat : 
+<img width="1441" height="820" alt="image" src="https://github.com/user-attachments/assets/5bfc45ac-5484-4034-859b-909a5d2f2bca" />
+
+Case 3 : 
+<img width="962" height="597" alt="image" src="https://github.com/user-attachments/assets/af8c5d23-e975-4395-8936-80c5cc8f35b3" />
+
+Résultat : 
+<img width="1438" height="838" alt="image" src="https://github.com/user-attachments/assets/84f32663-0864-4510-98ef-fdd3ba6714cf" />
+
+
+
+
+
 
