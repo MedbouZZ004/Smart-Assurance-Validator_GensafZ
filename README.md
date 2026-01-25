@@ -1,94 +1,171 @@
-# Smart Assurance Validator X 🛡️
+Life Savings & Succession Document Validator
+Overview
 
-An AI-powered document validation system designed for the insurance sector, specifically targeting the **French** and **Moroccan** markets. This tool leverages advanced OCR and Large Language Models (LLM) to extract data, verify technical integrity (fraud detection), and ensure business compliance.
+This project is an intelligent document validation system designed for life savings insurance (épargne-vie) in a succession context.
+Its goal is to automatically analyze, verify, and validate insurance claim documents after a death, while detecting inconsistencies, missing data, or potential fraud.
 
-## 🚀 Features
+The system accelerates processing for valid cases and safely redirects complex or suspicious cases to a human reviewer.
 
-*   **Multi-Format Support:** Compatible with **PDF, PNG, and JPEG** files.
-*   **Dual-Market Logic:** Specialized validation rules for:
-    *   **France:** Carte Verte, Attestation d'Assurance, Constat Amiable.
-    *   **Morocco:** Attestation d'Assurance, Carte Grise, Permis, Constat Amiable.
-*   **AI-Powered Analysis:** Uses **Groq (Llama 3.3-70b)** for deep semantic understanding and data extraction.
-*   **Fraud Detection:**
-    *   **Metadata Analysis:** Detects traces of editing software (Photoshop, Canva, GIMP, etc.).
-    *   **Font Consistency:** Flags documents with excessive font variations.
-*   **Automated Extraction:** Extracts key business data such as Insurer, Policy Number, Dates, and Vehicle/Client details.
-*   **User-Friendly Interface:** Built with **Streamlit** for real-time visual feedback and validation verdicts.
 
-## 🛠️ Tech Stack
 
-*   **Python** (Core Logic)
-*   **Streamlit** (Frontend UI)
-*   **Groq API** (LLM - Llama 3.3)
-*   **PyMuPDF (fitz)** (PDF Parsing)
-*   **EasyOCR** (Optical Character Recognition)
-*   **FPDF** (Demo Data Generation)
+Problem Context
 
-## 📦 Installation
+In life insurance and savings contracts, claim processing after a death is often slow and manual. Files usually contain multiple documents, and errors or fraud can lead to financial loss, legal issues, or delays for beneficiaries.
 
-1.  **Clone the repository:**
-    ```bash
-    git clone https://github.com/MedbouZZ004/Smart-Assurance-ValidatorX.git
-    cd Smart-Assurance-ValidatorX
-    ```
+This project addresses these challenges by automating the first level of document analysis, while keeping humans in the loop for final decisions when needed.
 
-2.  **Install dependencies:**
-    ```bash
-    pip install streamlit pymupdf easyocr groq python-dotenv fpdf
-    ```
 
-3.  **Configure Environment:**
-    Create a `.env` file in the root directory and add your Groq API key:
-    ```env
-    GROQ_API_KEY=your_api_key_here
-    ```
 
-## ▶️ Usage
+What the System Does
 
-1.  **Run the application:**
-    ```bash
-    streamlit run app.py
-    ```
+The system receives a case file composed of multiple documents (PDF, PNG, JPEG).
+It then:
 
-2.  **Upload Documents:**
-    *   Drag and drop insurance documents onto the interface.
-    *   The system acts as an "AI Auditor", analyzing the file for fraud signs and content validity.
+identifies the type of each document
 
-3.  **View Results:**
-    *   **Status:** ✅ ACCEPTED or ❌ REJECTED (with score).
-    *   **Details:** Extracted fields, detected country, and document type.
-    *   **Fraud Alert:** Warnings if suspicious metadata or inconsistencies are found.
+reads and extracts the relevant information
 
-## 🧪 Testing
+compares data across documents
 
-You can generate sample test documents (valid and fraudulent) using the provided script:
-```bash
-python demo_morocco.py
-```
-This will create PDF files on your Desktop for testing purposes.
+detects inconsistencies or suspicious elements
 
-## Execution : 
-Case 1 : 
-<img width="925" height="612" alt="image" src="https://github.com/user-attachments/assets/89fb44a9-33c9-403b-85db-a35890ef5619" />
-
-<img width="1473" height="742" alt="image" src="https://github.com/user-attachments/assets/8594f5cb-53c4-4aef-8376-ec97ac418f0b" />
-Résultat : 
-<img width="1437" height="825" alt="image" src="https://github.com/user-attachments/assets/c72685e2-24a0-4b14-9668-e5c30a0d0a46" />
-
-Case 2 : 
-<img width="718" height="547" alt="image" src="https://github.com/user-attachments/assets/9a2caae6-bf6d-421d-a84a-73342756c3ad" />
-
-Résultat : 
-<img width="1441" height="820" alt="image" src="https://github.com/user-attachments/assets/5bfc45ac-5484-4034-859b-909a5d2f2bca" />
-
-Case 3 : 
-<img width="962" height="597" alt="image" src="https://github.com/user-attachments/assets/af8c5d23-e975-4395-8936-80c5cc8f35b3" />
-
-Résultat : 
-<img width="1438" height="838" alt="image" src="https://github.com/user-attachments/assets/84f32663-0864-4510-98ef-fdd3ba6714cf" />
+decides whether the case can be validated automatically or must be reviewed by a human agent
 
 
 
 
+Documents Supported (Succession / Épargne-Vie)
 
+The system is designed to handle the following documents:
+
+National ID of the deceased (CIN / Passport)
+
+Death certificate or death record
+
+Life savings insurance contract (épargne-vie / policy)
+
+Beneficiary clause or contract amendment
+
+National ID of the beneficiary
+
+Bank RIB (with IBAN if available) for payment
+
+Power of attorney or notarized document (special or complex cases)
+
+A case cannot be fully validated if mandatory documents are missing.
+
+
+
+Key Data Extracted
+
+From these documents, the system extracts and analyzes:
+
+Names and surnames
+
+National ID numbers
+
+Dates (birth, death, contract subscription)
+
+Insurance contract number
+
+Beneficiary identity
+
+Bank information (RIB / IBAN)
+
+Legal references (if present)
+
+
+
+Validation Logic
+
+The system compares information between documents to ensure consistency.
+Examples:
+
+The deceased’s identity must match across ID, contract, and death certificate
+
+The beneficiary requesting payment must match the beneficiary stated in the contract
+
+The bank account (RIB) must belong to the beneficiary or be legally justified
+
+
+
+Decision Outcomes
+
+Each case results in one of three decisions:
+
+ACCEPT
+All required documents are present and data is consistent. The case can be processed automatically.
+
+REVIEW
+Missing documents, minor inconsistencies, unclear information, or low document quality. The case is sent to a human agent.
+Strong indicators of fraud or major inconsistencies that invalidate the claim.
+
+
+
+Why Some Cases Are Sent to a Human
+
+The system is not designed to replace humans.
+It deliberately sends cases to human reviewers when:
+
+a required document is missing
+
+extracted data is incomplete or ambiguous
+
+documents contain conflicting information
+
+there are signs of document manipulation
+
+This ensures fairness, safety, and legal compliance.
+
+
+
+Security & Privacy
+
+Because the system handles sensitive personal and financial data:
+
+sensitive fields (ID numbers, RIB, IBAN) are masked in logs and UI
+
+data should be encrypted at rest and in transit
+
+all decisions are traceable through an audit trail
+
+
+
+Project Scope
+
+This project is intended for:
+
+academic projects
+
+hackathons
+
+proof-of-concepts
+
+early-stage validation systems for insurance workflows
+
+It is not a production-ready insurance system, but a structured and realistic demonstration of how AI can assist document validation in life insurance succession!!!!!!
+
+
+
+High-Level Workflow
+
+Document upload (PDF / image)
+
+Document type detection
+
+Text extraction (OCR)
+
+Structured data extraction
+
+Cross-document consistency checks
+
+Risk and anomaly detection
+
+Automatic decision or human review
+
+
+
+Summary
+
+This project demonstrates how artificial intelligence can improve the speed, reliability, and security of épargne-vie succession processing, by validating correct cases automatically and intelligently flagging complex cases for human review.
 
