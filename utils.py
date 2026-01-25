@@ -104,21 +104,25 @@ def validate_rib_morocco(rib_str: str) -> tuple:
 
 def validate_cin_morocco(cin_str: str) -> tuple:
     """
-    CIN Maroc (approx):
-    - Beaucoup de documents affichent 7-8 chiffres + 0-2 lettres
-    Exemple : 1234567AB ou 1234567A
-    Retourne : (is_valid, message)
+    CIN Maroc (pragmatique):
+    Formats courants:
+    - 1 à 2 lettres + 5 à 8 chiffres  (ex: CD936873, AB123456)
+    Tolérance espaces.
     """
     if not cin_str:
         return False, "CIN vide"
 
     cin = _strip_spaces(cin_str).upper()
 
-    # Pattern : 7-8 chiffres + 0-2 lettres
-    if re.match(r"^[0-9]{7,8}[A-Z]{0,2}$", cin):
+    # 1-2 lettres + 5-8 chiffres
+    if re.match(r"^[A-Z]{1,2}[0-9]{5,8}$", cin):
         return True, "CIN Maroc valide"
 
-    return False, f"Format CIN Maroc invalide : {cin} (attendu: 7-8 chiffres + 0-2 lettres)"
+    # fallback (ancien pattern)
+    if re.match(r"^[0-9]{7,8}[A-Z]{0,2}$", cin):
+        return True, "CIN valide (pattern alternatif)"
+
+    return False, f"Format CIN invalide : {cin}"
 
 
 def validate_date_format(date_str: str) -> tuple:

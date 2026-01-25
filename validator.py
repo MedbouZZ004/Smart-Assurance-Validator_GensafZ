@@ -1,4 +1,5 @@
 import os
+import re
 import fitz  # PyMuPDF
 import easyocr
 import json
@@ -10,6 +11,8 @@ from utils import (
     validate_iban,
     validate_cin_morocco,
     validate_dates_coherence,
+    validate_date_format,
+    validate_rib_morocco,
 )
 
 load_dotenv()
@@ -17,28 +20,23 @@ load_dotenv()
 
 class InsuranceValidator:
     """
-    Validator OCR + extraction + checks.
-    IMPORTANT POLICY:
-    - The AI NEVER makes a final REJECT decision.
-    - It only returns: decision = "ACCEPT" or "REVIEW"
-    - Even if fraud is suspected => decision MUST be "REVIEW" (human decides).
+    POLICY:
+    - NEVER auto-reject
+    - ONLY: ACCEPT or REVIEW
     """
 
     def __init__(self):
-        # OCR: French + English (add 'ar' if you need Arabic later)
         self.reader = easyocr.Reader(["fr", "en"])
-
         api_key = os.getenv("GROQ_API_KEY")
         if not api_key:
             raise ValueError("GROQ_API_KEY non trouvée ! Vérifiez votre fichier .env.")
         self.client = Groq(api_key=api_key)
-        self.groq_timeout = 30  # seconds
+        self.groq_timeout = 30
 
     # -----------------------------
     # Fraud / Integrity (PDF level)
     # -----------------------------
     def analyze_technical_integrity(self, doc, file_path: str) -> dict:
-        """Detect suspicious metadata/editors and font anomalies (signals only, not final reject)."""
         metadata = doc.metadata or {}
 
         fraud_tools = ["canva", "photoshop", "illustrator", "gimp", "inkscape", "adobe acrobat pro"]
@@ -49,10 +47,8 @@ class InsuranceValidator:
         fonts = []
         for page in doc:
             fonts.extend([f[3] for f in page.get_fonts()])
-        unique_fonts = set(fonts)
+        font_count = len(set(fonts))
 
-        # Heuristic: font variety can be a signal, not a verdict
-        font_count = len(unique_fonts)
         potential_tampering = bool(is_suspicious_tool or font_count > 8)
 
         return {
@@ -67,7 +63,9 @@ class InsuranceValidator:
     # OCR & Structure extraction
     # -----------------------------
     def extract_all(self, file_path: str):
-        """Extract OCR text + structure + technical integrity report."""
+        """
+        PDF only (current). If you upload PNG/JPG, app should convert to PDF or you add support later.
+        """
         text_results = []
         structure = {"has_images": False, "page_count": 0, "has_tables": False}
 
@@ -83,7 +81,6 @@ class InsuranceValidator:
                 structure["has_tables"] = True
 
             pix = page.get_pixmap()
-            # easyocr expects image bytes
             text_results.extend(self.reader.readtext(pix.tobytes("png"), detail=0))
 
         return " ".join(text_results), structure, tech_report
@@ -93,13 +90,12 @@ class InsuranceValidator:
     # -----------------------------
     def validate_with_groq(self, text: str, structure: dict, tech_report: dict) -> dict:
         """
-        Extract fields and propose a decision:
-        - "ACCEPT" only if everything is complete + coherent + no fraud signals
-        - otherwise "REVIEW"
-        NOTE: AI never final-rejects.
+        LLM extracts fields + proposes ACCEPT/REVIEW.
+        Post-validation enforces policy and Morocco checks.
         """
         prompt = f"""
 RÔLE : Auditeur Assurance (Contexte MAROC) - Dossiers épargne-vie / succession.
+IMPORTANT : Tu ne rejettes JAMAIS. Décision = "ACCEPT" ou "REVIEW" seulement.
 
 DONNÉES TECHNIQUES (SIGNAL UNIQUEMENT) :
 - Structure : {structure}
@@ -107,30 +103,42 @@ DONNÉES TECHNIQUES (SIGNAL UNIQUEMENT) :
 - Nombre de polices distinctes : {tech_report.get('font_count')}
 
 TEXTE OCR (extrait) :
-{text[:4000]}
+{text[:4500]}
 
-MISSION :
-1) Identifier le type de document (ou document probable).
-2) Extraire les champs utiles (bénéficiaire, contrat, banque, dates).
-3) Proposer une décision : "ACCEPT" ou "REVIEW".
-IMPORTANT : Tu ne rejettes JAMAIS définitivement. Si doute ou suspicion => "REVIEW".
+OBJECTIF :
+1) Classifier le document: ID / BANK / DEATH / LIFE_CONTRACT (ou UNKNOWN)
+2) Extraire les champs requis
+3) Proposer une décision "ACCEPT" seulement si champs critiques présents + formats OK + pas de signaux techniques
 
-INDICATIONS MAROC :
-- IBAN Maroc commence souvent par "MA" (ex: MA + 24-26 caractères après selon format affiché).
-- RIB peut apparaître en groupes de chiffres (format d'affichage variable).
-- CIN Maroc : format alphanumérique (variable). Si tu n'es pas sûr, remplis quand même mais indique l'incertitude dans reason.
+CHAMPS À EXTRAIRE :
 
-CHAMPS À EXTRAIRE (si présents) :
-- insurer, policy_number
-- deceased_name (si le document contient le défunt)
-- beneficiary_name, beneficiary_cin
-- bank_rib (si présent), bank_iban (si présent)
-- start_date, end_date (si document a une période)
-- amount (si présent)
+[ID - CNI/PASSEPORT]
+- beneficiary_name
+- beneficiary_cin
+- beneficiary_birth_date
+- id_document_number
+- id_expiry_date
 
-RÈGLES DÉCISION :
-- "ACCEPT" seulement si : champs critiques présents + formats OK + cohérences internes OK + AUCUNE suspicion fraude.
-- Si métadonnées/édition suspectes OU champs manquants OU incohérences => "REVIEW".
+[BANK - RIB/IBAN]
+- bank_account_holder
+- bank_iban (si présent)
+- bank_rib (si présent)
+- bank_bic
+- bank_name
+
+[DEATH - CERTIFICAT DE DÉCÈS]
+- deceased_name
+- death_date
+- death_place
+- death_act_number
+
+[LIFE_CONTRACT - CONTRAT ÉPARGNE-VIE]
+- policy_number
+- subscriber_name
+- beneficiary_name
+- beneficiary_cin (si présent)
+- contract_effective_date
+- capital
 
 Réponds UNIQUEMENT en JSON :
 {{
@@ -151,12 +159,23 @@ Réponds UNIQUEMENT en JSON :
   "extracted_data": {{
     "insurer": "",
     "policy_number": "",
+    "subscriber_name": "",
     "deceased_name": "",
     "beneficiary_name": "",
     "beneficiary_cin": "",
+    "beneficiary_birth_date": "",
+    "id_document_number": "",
+    "id_expiry_date": "",
+    "bank_account_holder": "",
     "bank_rib": "",
     "bank_iban": "",
-    "amount": ""
+    "bank_bic": "",
+    "bank_name": "",
+    "death_date": "",
+    "death_place": "",
+    "death_act_number": "",
+    "contract_effective_date": "",
+    "capital": ""
   }},
 
   "format_validation": {{
@@ -184,7 +203,7 @@ Réponds UNIQUEMENT en JSON :
         except groq.AuthenticationError:
             raise ValueError("Clé API GROQ invalide.")
         except Exception as e:
-            # Never reject: system error => REVIEW
+            # NEVER reject: errors => REVIEW
             return {
                 "decision": "REVIEW",
                 "is_valid": False,
@@ -200,23 +219,18 @@ Réponds UNIQUEMENT en JSON :
             }
 
     # -----------------------------
-    # Post validation (no auto-reject)
+    # Post validation (strict policy)
     # -----------------------------
     def _validate_extracted_data(self, groq_result: dict, tech_report: dict | None = None) -> dict:
         """
-        Post-traitement :
-        - Validate CIN
-        - Validate dates coherence (if both exist)
-        - Validate IBAN (if present)
-        - Validate RIB (if validate_rib_morocco exists; otherwise only checks presence)
-        - Add fraud signals from tech_report
-        POLICY: decision is only ACCEPT or REVIEW (never final REJECT).
+        Post-traitement (sans auto-reject):
+        - Validations adaptées au type (ID/BANK/DEATH/LIFE_CONTRACT)
+        - Tech signals => REVIEW
         """
         tech_report = tech_report or {}
         format_errors = []
         fraud_signals = []
 
-        # Ensure keys exist
         groq_result = groq_result or {}
         groq_result.setdefault("format_validation", {})
         groq_result.setdefault("extracted_data", {})
@@ -225,125 +239,124 @@ Réponds UNIQUEMENT en JSON :
         groq_result.setdefault("country", "MAROC")
         groq_result.setdefault("doc_type", "UNKNOWN")
 
-        # Fraud signals from technical report (signals only)
+        extracted = groq_result.get("extracted_data", {}) or {}
+
+        # normalize doc_type to one of 4
+        raw_dt = (groq_result.get("doc_type") or "UNKNOWN").strip().upper()
+        dt = raw_dt
+        if "CNI" in dt or "CNIE" in dt or "PASSPORT" in dt or "PASSEPORT" in dt or "IDENT" in dt:
+            dt = "ID"
+        elif "RIB" in dt or "IBAN" in dt or "BANK" in dt or "BANQUE" in dt:
+            dt = "BANK"
+        elif "DECES" in dt or "DÉCÈS" in dt or "DEATH" in dt or "CERTIFICAT" in dt:
+            dt = "DEATH"
+        elif "ASSURANCE" in dt or "CONTRAT" in dt or "POLICE" in dt or "LIFE" in dt:
+            dt = "LIFE_CONTRACT"
+        elif dt not in ["ID", "BANK", "DEATH", "LIFE_CONTRACT"]:
+            dt = "UNKNOWN"
+
+        groq_result["doc_type"] = dt
+
+        fv = groq_result["format_validation"]
+        fv.setdefault("cin_format_valid", True)
+        fv.setdefault("iban_format_valid", True)
+        fv.setdefault("rib_format_valid", True)
+        fv.setdefault("dates_format_valid", True)
+
+        # tech fraud signals (signals only)
         if tech_report.get("potential_tampering"):
-            fraud_signals.append(
-                f"Suspicious metadata/editor detected: {tech_report.get('editor_detected')}"
-            )
+            fraud_signals.append(f"Suspicious editor: {tech_report.get('editor_detected')}")
         if tech_report.get("font_count", 0) > 8:
             fraud_signals.append(f"High font variety: {tech_report.get('font_count')} fonts")
 
-        # Dates coherence (if present)
-        dates_ext = groq_result.get("dates_extracted", {})
+        # dates coherence if both exist (optional)
+        dates_ext = groq_result.get("dates_extracted", {}) or {}
         start = (dates_ext.get("start_date") or "").strip()
         end = (dates_ext.get("end_date") or "").strip()
-
         if start and end:
             is_coh, msg = validate_dates_coherence(start, end)
             groq_result["dates_extracted"]["dates_coherent"] = bool(is_coh)
             if not is_coh:
                 format_errors.append(msg)
-        else:
-            # Not always mandatory for every doc, but it reduces auto-accept likelihood
-            groq_result["dates_extracted"].setdefault("dates_coherent", True)
 
-        extracted = groq_result.get("extracted_data", {})
+        # date format checks (only if present)
+        def _check_date(field_key: str, label: str):
+            v = (extracted.get(field_key) or "").strip()
+            if not v:
+                return
+            ok, _ = validate_date_format(v)
+            if not ok:
+                fv["dates_format_valid"] = False
+                format_errors.append(f"{label} invalide: {v}")
 
-        # Defaults for validations
-        fv = groq_result["format_validation"]
-        fv.setdefault("cin_format_valid", True)
-        fv.setdefault("iban_format_valid", True)
-        fv.setdefault("rib_format_valid", True)
-        fv.setdefault("dates_format_valid", True)  # you can refine later
+        _check_date("beneficiary_birth_date", "Date naissance")
+        _check_date("id_expiry_date", "Date expiration ID")
+        _check_date("death_date", "Date décès")
+        _check_date("contract_effective_date", "Date effet contrat")
 
-        # CIN validation (beneficiary)
+        # CIN validation: ONLY for ID/LIFE_CONTRACT
         cin = (extracted.get("beneficiary_cin") or "").strip()
-        if cin:
-            is_valid_cin, cin_msg = validate_cin_morocco(cin)
-            fv["cin_format_valid"] = bool(is_valid_cin)
-            if not is_valid_cin:
-                format_errors.append(cin_msg)
+        if dt in ["ID", "LIFE_CONTRACT"]:
+            if cin:
+                ok, msg = validate_cin_morocco(cin)
+                fv["cin_format_valid"] = bool(ok)
+                if not ok:
+                    format_errors.append(msg)
+            else:
+                fv["cin_format_valid"] = False
+                format_errors.append("CIN bénéficiaire manquant.")
         else:
-            fv["cin_format_valid"] = False
-            format_errors.append("CIN bénéficiaire manquant.")
+            fv["cin_format_valid"] = True  # BANK/DEATH do not require CIN
 
-        # Bank data: accept either RIB or IBAN, but must exist for payment
+        # IBAN/RIB validation: only if present (required at dossier-level by app)
         rib = (extracted.get("bank_rib") or "").strip()
         iban = (extracted.get("bank_iban") or "").strip()
 
-        # Backward compatibility if your LLM returned beneficiary_rib
-        if not rib and not iban:
-            legacy = (extracted.get("beneficiary_rib") or "").strip()
-            if legacy:
-                if legacy.upper().startswith("MA"):
-                    iban = legacy
-                    extracted["bank_iban"] = legacy
-                else:
-                    rib = legacy
-                    extracted["bank_rib"] = legacy
-
-        # IBAN validation (only if present)
         if iban:
-            is_valid_iban, iban_msg = validate_iban(iban)
-            fv["iban_format_valid"] = bool(is_valid_iban)
-            if not is_valid_iban:
-                format_errors.append(iban_msg)
+            ok, msg = validate_iban(iban)
+            fv["iban_format_valid"] = bool(ok)
+            if not ok:
+                format_errors.append(msg)
         else:
-            fv["iban_format_valid"] = True  # absence is OK if RIB exists
+            fv["iban_format_valid"] = True
 
-        # RIB validation (if function exists)
         if rib:
-            try:
-                from utils import validate_rib_morocco  # optional in your utils.py
-
-                is_valid_rib, rib_msg = validate_rib_morocco(rib)
-                fv["rib_format_valid"] = bool(is_valid_rib)
-                if not is_valid_rib:
-                    format_errors.append(rib_msg)
-            except Exception:
-                # If not implemented yet, we only mark as present
-                fv["rib_format_valid"] = True
+            ok, msg = validate_rib_morocco(rib)
+            fv["rib_format_valid"] = bool(ok)
+            if not ok:
+                format_errors.append(msg)
         else:
-            fv["rib_format_valid"] = True  # absence is OK if IBAN exists
-
-        if not rib and not iban:
-            format_errors.append("RIB/IBAN manquant (paiement impossible).")
+            fv["rib_format_valid"] = True
 
         # Score adjustment
-        original_score = int(groq_result.get("score", 50) or 50)
-        penalty = (len(format_errors) * 5) + (len(fraud_signals) * 10)
+        original_score = int(groq_result.get("score", 60) or 60)
+        penalty = (len(format_errors) * 6) + (len(fraud_signals) * 10)
         final_score = max(0, original_score - penalty)
         groq_result["score"] = final_score
 
-        # Attach fraud signals
         groq_result["fraud_suspected"] = len(fraud_signals) > 0
-        groq_result["fraud_signals"] = list(
-            set(groq_result.get("fraud_signals", []) + fraud_signals)
-        )
+        groq_result["fraud_signals"] = list(set(groq_result.get("fraud_signals", []) + fraud_signals))
 
-        # Decision rule: NEVER REJECT automatically
-        has_bank_ok = bool(rib or iban) and (fv.get("rib_format_valid", True) and fv.get("iban_format_valid", True))
-        has_cin_ok = fv.get("cin_format_valid", False)
+        # decision: never reject
+        if tech_report.get("potential_tampering"):
+            groq_result["decision"] = "REVIEW"
 
-        # ACCEPT only if strong confidence + no fraud + no format errors
-        if final_score >= 90 and has_bank_ok and has_cin_ok and not groq_result["fraud_suspected"] and len(format_errors) == 0:
+        if final_score >= 90 and not groq_result["fraud_suspected"] and len(format_errors) == 0:
             groq_result["decision"] = "ACCEPT"
         else:
             groq_result["decision"] = "REVIEW"
 
-        # Human-readable reason enrichment
+        # reason enrichment
         reasons = []
         if format_errors:
-            reasons.append("Champs/Formats à vérifier: " + "; ".join(format_errors))
+            reasons.append("Formats à vérifier: " + "; ".join(format_errors))
         if groq_result["fraud_suspected"]:
-            reasons.append("Suspicion fraude (à confirmer humain): " + "; ".join(groq_result["fraud_signals"]))
+            reasons.append("Signaux techniques: " + "; ".join(groq_result["fraud_signals"]))
 
         if reasons:
             existing = (groq_result.get("reason") or "").strip()
             extra = " | ".join(reasons)
             groq_result["reason"] = (existing + " | " + extra).strip(" |")
 
-        # Keep compatibility field if your app expects it
         groq_result["is_valid"] = (groq_result["decision"] == "ACCEPT")
-
         return groq_result
