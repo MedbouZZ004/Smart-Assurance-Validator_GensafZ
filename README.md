@@ -1,260 +1,92 @@
-# 🛡️ Smart Assurance Multi-Document Cross-Validator
+Life Savings & Succession Document Validator
+Overview
 
-> An intelligent AI-powered system for validating insurance claims through multi-document analysis and cross-validation with transparent logical scoring rules.
+This project is an intelligent document validation system designed for life savings insurance (épargne-vie) in a succession context.
+Its goal is to automatically analyze, verify, and validate insurance claim documents after a death, while detecting inconsistencies, missing data, or potential fraud.
 
-## 📖 Table of Contents
+The system accelerates processing for valid cases and safely redirects complex or suspicious cases to a human reviewer.
 
-1. [System Overview](#system-overview)
-2. [Quick Start](#quick-start)
-3. [How It Works](#how-it-works)
-4. [Document Types](#document-types)
-5. [Scoring System (Detailed)](#scoring-system-detailed)
-6. [Usage Guide](#usage-guide)
-7. [File Structure](#file-structure)
-8. [Troubleshooting](#troubleshooting)
-9. [Advanced Configuration](#advanced-configuration)
+## 🎯 Key Features
 
----
+✅ **Multi-Document Validation** - Validates 4 required document types simultaneously  
+✅ **Transparent Scoring Rules** - Clear, logical deductions for every decision  
+✅ **Cross-Validation** - Compares data across documents to detect inconsistencies  
+✅ **Fraud Detection** - Identifies edited/tampered documents using technical analysis  
+✅ **OCR + AI Extraction** - Extracts text from PDF, PNG, JPG automatically  
+✅ **Automatic Archiving** - Stores files in validated_docs or review_needed folders  
+✅ **Security & Privacy** - Local processing, no sensitive data exposure  
+✅ **Audit Trail** - Complete logging of all validation decisions  
 
-## System Overview
+## Problem Context
 
-This system validates **insurance claim documents** by:
+In life insurance and savings contracts, claim processing after a death is often slow and manual. Files usually contain multiple documents, and errors or fraud can lead to financial loss, legal issues, or delays for beneficiaries.
 
-1. **Individual Validation** - Analyzes each document separately for fraud and data extraction
-2. **Cross-Validation** - Compares data across all documents to detect inconsistencies
-3. **Intelligent Scoring** - Uses transparent logical rules to compute a final score
-4. **Automatic Storage** - Accepts (score > 50) or rejects (score ≤ 50) claims
+This project addresses these challenges by automating the first level of document analysis, while keeping humans in the loop for final decisions when needed.
 
-### ⭐ Key Features
+## What the System Does
 
-✅ **Multi-Document Support** - Upload 2-5 documents at once  
-✅ **Fraud Detection** - Identifies edited/tampered documents  
-✅ **OCR + AI** - Extracts text from PDF, PNG, JPG automatically  
-✅ **Cross-Matching** - Verifies data consistency across documents  
-✅ **Transparent Scoring** - Shows exactly why a claim was accepted/rejected  
-✅ **Automatic Archiving** - Stores files in validated_docs/ or rejected_docs/  
+The system receives a case file composed of multiple documents (PDF, PNG, JPEG).
+It then:
 
----
+1. **Identifies** the type of each document
+2. **Reads and extracts** the relevant information
+3. **Compares** data across documents
+4. **Detects** inconsistencies or suspicious elements
+5. **Decides** whether the case can be validated or must be reviewed
 
-## Quick Start
+## Documents Supported (Succession / Épargne-Vie)
 
-### Prerequisites
-- Python 3.8+
-- Groq API key (free at https://console.groq.com)
+The system is designed to handle the following documents:
 
-### Installation Steps
+1. **National ID** (CNI / Passport) - Identity verification
+2. **Death Certificate** - Confirms death and provides details
+3. **Life Savings Insurance Contract** (épargne-vie / policy) - Coverage verification
+4. **Bank Account Details** (RIB / IBAN) - Payment destination
+5. **Proof of Residence** (optional) - Address verification
 
-#### 1. Install Dependencies
-```bash
-pip install streamlit pymupdf easyocr groq python-dotenv
-```
-
-#### 2. Get Groq API Key
-1. Go to https://console.groq.com
-2. Sign up (free account)
-3. Create new API key
-4. Copy the key
-
-#### 3. Configure Environment
-Create a `.env` file in your project folder:
-```env
-GROQ_API_KEY=your_groq_api_key_here
-```
-
-⚠️ **Important**: Never share your `.env` file or API key!
-
-#### 4. Create Required Folders
-```bash
-mkdir validated_docs rejected_docs temp_uploads
-```
-
-#### 5. Run the Application
-```bash
-streamlit run app_multi_doc.py
-```
-
-The app opens at `http://localhost:8501`
-
----
-
-## How It Works
-
-### 3-Phase Validation Process
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│                    PHASE 1: INDIVIDUAL VALIDATION            │
-├─────────────────────────────────────────────────────────────┤
-│  For each document:                                          │
-│  1. Extract text via OCR (EasyOCR)                           │
-│  2. Analyze technical integrity (fraud detection)            │
-│  3. Detect document type                                     │
-│  4. Extract structured fields using AI (Groq)               │
-│  5. Compute confidence score (0-100) using rules            │
-│  ✓ Output: Individual validation result + confidence        │
-└─────────────────────────────────────────────────────────────┘
-                              ↓
-┌─────────────────────────────────────────────────────────────┐
-│               PHASE 2: CROSS-VALIDATION                      │
-├─────────────────────────────────────────────────────────────┤
-│  Compare all documents:                                      │
-│  1. Match names across documents                             │
-│  2. Verify date logic                                        │
-│  3. Check critical fields presence                           │
-│  4. Detect fraud indicators                                  │
-│  5. Apply logical scoring rules                              │
-│  ✓ Output: Cross-validation result + overall score          │
-└─────────────────────────────────────────────────────────────┘
-                              ↓
-┌─────────────────────────────────────────────────────────────┐
-│               PHASE 3: DECISION & STORAGE                    │
-├─────────────────────────────────────────────────────────────┤
-│  Based on overall score:                                     │
-│  • Score > 50: ACCEPT ✅ → validated_docs/                  │
-│  • Score ≤ 50: REJECT ❌ → rejected_docs/                   │
-│  ✓ Files automatically archived                             │
-└─────────────────────────────────────────────────────────────┘
-```
-
----
-
-## Document Types
-
-The system recognizes and processes **5 document types**:
-
-### 1️⃣ CNI / Passport
-
-**Purpose**: Verify the claimant's identity  
-**Keywords**: "cni", "passport", "carte nationale", "identité"  
-
-**Extracted Fields**:
-- `name` - Full name (required)
-- `first_name` - First name (required)
-- `birth_date` - Date of birth in DD/MM/YYYY (required)
-- `numero_document` - Document number (required)
-- `date_expiration` - Expiration date (required)
-
----
-
-### 2️⃣ Death Certificate
-
-**Purpose**: Confirm death and provide date/location  
-**Keywords**: "certificat", "décès", "death", "mort", "acte de décès"  
-
-**Extracted Fields**:
-- `deceased_name` - Name of deceased (required)
-- `death_date` - Date of death in DD/MM/YYYY (required)
-- `lieu` - Location of death (required)
-- `numero_acte` - Act/certificate number (important)
-
----
-
-### 3️⃣ Insurance Contract
-
-**Purpose**: Verify insurance coverage and dates  
-**Keywords**: "contrat", "assurance", "police", "souscripteur", "bénéficiaire"  
-
-**Extracted Fields**:
-- `policy_number` - Policy number (required)
-- `subscriber_name` - Subscriber/insured name (required)
-- `beneficiary_names` - List of beneficiaries (required)
-- `capital` - Sum insured amount (important)
-- `effective_date` - Contract start date DD/MM/YYYY (required)
-- `end_date` - Contract end date DD/MM/YYYY (required)
-
----
-
-### 4️⃣ RIB / IBAN (Bank Account)
-
-**Purpose**: Verify bank account for claim payment  
-**Keywords**: "rib", "iban", "bic", "banque", "titulaire", "compte"  
-
-**Extracted Fields**:
-- `titulaire` - Account holder name (required)
-- `iban` - IBAN number (required)
-- `bic` - BIC code (required)
-- `bank_name` - Bank name (important)
-
----
-
-### 5️⃣ Proof of Residence
-
-**Purpose**: Verify claimant's address  
-**Keywords**: "justificatif", "domicile", "residence", "adresse", "facture", "bail"  
-
-**Extracted Fields**:
-- `name` - Name (required)
-- `address` - Full address (required)
-- `date_justificatif` - Document date in DD/MM/YYYY (required)
-
----
-
-## Scoring System (Detailed)
-
-### Overview
-
-The scoring system uses **transparent, rule-based logic**. Every point deduction has a clear reason shown in the UI.
-
-```
-SCORING FORMULA:
-Final Score = Base Score - Deductions
-            = 100 - (fraud + missing_docs + missing_fields + date_issues + name_mismatches)
-```
+## 🔢 Scoring System (Detailed)
 
 ### Individual Document Score (0-100)
 
 Applied to each document before cross-validation.
 
-#### Scoring Rules
+#### Scoring Rules for Individual Documents
 
 | Rule | Condition | Deduction | Impact |
 |------|-----------|-----------|--------|
-| **Fraud Detected** | Document tampered/edited | -50 | Critical |
-| **Suspicious Metadata** | Photoshop, Canva, GIMP detected | -10 | Major |
-| **Font Inconsistency** | >6 different fonts | -5 | Minor |
-| **Missing Critical Field** | Required field empty | -10 each (max -40) | Major |
+| **Fraud Detection** | Document tampered/edited OR technical tampering detected | -50 | Critical |
+| **Suspicious Metadata** | Photoshop, Canva, GIMP, Illustrator detected in PDF | -10 | Major |
+| **Font Inconsistency** | More than 8 different fonts detected | -5 | Minor |
+| **Missing Critical Field** | Required field is empty or invalid | -10 each (max -40) | Major |
 
-#### Confidence Levels
+#### Example: Individual Document Score
 
-```
-90-100: ⭐⭐⭐⭐⭐ Excellent
-80-89:  ⭐⭐⭐⭐  Very Good
-70-79:  ⭐⭐⭐   Good
-60-69:  ⭐⭐    Acceptable
-50-59:  ⭐     Poor
-0-49:   ❌    Unacceptable
-```
-
-#### Example: Individual Document
-
-**CNI/Passport with Suspicious Metadata**
+**CNI/Passport with 1 missing field**
 
 ```
-Base Score:                                100 points
-- Canva editor detected:                   -10 points
-- Missing birth_date field:                -10 points
-──────────────────────────────────────────────────────
-Final Confidence Score:                    80 points ⭐⭐⭐⭐ (Very Good)
+Base Score:                                      100 points
+- Photoshop editor detected:                     -10 points
+- Missing beneficiary_birth_date:               -10 points
+──────────────────────────────────────────────────────────
+Final Confidence Score:                          80 points ✅
 ```
-
----
 
 ### Cross-Validation Score (0-100)
 
-Applied after all documents analyzed.
+Applied after all documents are individually validated.
 
-#### Scoring Rules
+#### Scoring Rules for Cross-Validation
 
 | # | Rule | Condition | Deduction | Logic |
 |---|------|-----------|-----------|-------|
-| 1️⃣ | **Fraud Detection** | Any document shows tampering | -50 | Cannot process fraudulent doc |
-| 2️⃣ | **Missing Critical Docs** | Missing Death Cert, Contract, or RIB | -15 | Cannot verify claim |
-| 3️⃣ | **Missing Critical Fields** | Key fields empty across docs | -15 | Incomplete claim |
-| 4️⃣ | **Low Confidence Docs** | Any document confidence < 60% | -10 | Unreliable extraction |
-| 5️⃣ | **Name Mismatches** | Names don't match across docs | -20 each (max -60) | Identity inconsistency |
-| 6️⃣ | **Date Logic Invalid** | Death date outside contract period | -25 | Coverage mismatch |
+| 1️⃣ | **Fraud Detection** | Any document shows tampering or technical suspicion | -50 | Cannot process fraudulent doc |
+| 2️⃣ | **Missing Critical Docs** | Missing Death Cert, Contract, or Bank Account | -15 | Cannot verify claim |
+| 3️⃣ | **Missing Critical Fields** | Key fields empty across multiple documents | -15 | Incomplete claim |
+| 4️⃣ | **Low Confidence Docs** | Any document confidence score < 60% | -10 | Unreliable extraction |
+| 5️⃣ | **Name Mismatches** | Names don't match across documents (deceased ≠ subscriber, etc.) | -20 each (max -60) | Identity inconsistency |
+| 6️⃣ | **Date Logic Invalid** | Death date before contract effective date | -25 | Coverage period mismatch |
 
-#### Decision Rules
+#### Decision Thresholds
 
 ```
 IF overall_score >= 70:
@@ -265,21 +97,19 @@ IF overall_score >= 70:
 ELSE IF 50 <= overall_score < 70:
    Status = QUESTIONABLE
    Recommendation = INVESTIGATE ⚠️
-   Action = Requires manual review
+   Action = Requires manual review in review_needed/
 
 ELSE IF overall_score < 50:
    Status = INVALID
    Recommendation = REJECT ❌
-   Action = Move to rejected_docs/
+   Action = Requires investigation
 ```
 
----
-
-### Detailed Scoring Examples
+### Example: Complete Cross-Validation Scoring
 
 #### ✅ EXAMPLE 1: Clean Claim (Score: 100)
 
-**Scenario**: All documents complete, all names match, no fraud
+**Scenario**: All documents complete, all names match, no fraud detected
 
 ```
 Base Score:                                           100
@@ -297,535 +127,519 @@ Result: Documents moved to validated_docs/
 
 **Why it passes**:
 - ✅ All names match perfectly across documents
-- ✅ Death date within contract validity
+- ✅ Death date within contract validity period
 - ✅ All critical documents present
-- ✅ All critical fields present
-- ✅ No fraud indicators
+- ✅ All critical fields present and complete
+- ✅ No fraud indicators detected
+- ✅ All documents have high confidence scores
 
 ---
 
 #### ⚠️ EXAMPLE 2: Suspicious Claim (Score: 55)
 
-**Scenario**: Name mismatch between contract beneficiary and RIB account holder
+**Scenario**: Beneficiary name on contract doesn't match bank account holder
 
 ```
 Base Score:                                           100
 - Fraud Detected:                                      -0 (no fraud)
 - Missing Critical Documents:                         -0 (all present)
 - Missing Critical Fields:                            -0 (all complete)
-- Low Confidence Documents:                           -10 (RIB at 55%)
-- Name Mismatches:                                    -20 (Account holder ≠ Beneficiary)
+- Low Confidence Documents:                           -10 (Bank doc at 55%)
+- Name Mismatches:                                    -20 (Beneficiary ≠ Account Holder)
 - Death Date Outside Contract Period:                 -0 (date valid)
 ─────────────────────────────────────────────────────────
 FINAL SCORE: 55 ⚠️ INVESTIGATE
 
-Result: Requires manual review
+Result: Moved to review_needed/ for manual verification
 ```
 
 **Why it's questionable**:
-- ⚠️ Beneficiary name ≠ RIB account holder name
-- ⚠️ Low confidence in RIB extraction
-- ⚠️ Could be legitimate (gift/trust), but needs verification
+- ⚠️ Beneficiary name ≠ Bank account holder name
+- ⚠️ Low confidence in bank document extraction
+- ⚠️ Could be legitimate (power of attorney, trustee), but needs verification
 
 **What to do**:
 1. Contact claimant to clarify beneficiary situation
-2. Request clearer RIB scan
-3. Verify authorization for transfer to different person
+2. Request clearer bank document scan
+3. Verify legal authorization for transfer to different person
 
 ---
 
-#### ❌ EXAMPLE 3: Fraudulent Claim (Score: 25)
+#### ❌ EXAMPLE 3: Invalid Claim (Score: 30)
 
-**Scenario**: Photoshopped CNI, missing policy number
-
-```
-Base Score:                                           100
-- Fraud Detected:                                     -50 (Photoshop in CNI)
-- Missing Critical Documents:                         -0 (all present)
-- Missing Critical Fields:                           -15 (missing policy number)
-- Low Confidence Documents:                           -10 (CNI at 30%)
-- Name Mismatches:                                     -0 (all match)
-- Death Date Outside Contract Period:                 -0 (date valid)
-─────────────────────────────────────────────────────────
-FINAL SCORE: 25 ❌ REJECT
-
-Result: Moved to rejected_docs/ + Flag for investigation
-```
-
-**Why it fails**:
-- 🚩 Photoshop metadata detected in CNI (document tampering)
-- 🚩 Missing policy number in contract
-- 🚩 Very low confidence in CNI extraction (30%)
-
-**Action**: Reject claim + Escalate to fraud investigation team
-
----
-
-#### ❌ EXAMPLE 4: Timing Mismatch (Score: 45)
-
-**Scenario**: Death occurred after insurance contract expired
+**Scenario**: Death occurred before insurance contract started
 
 ```
 Base Score:                                           100
 - Fraud Detected:                                      -0 (no fraud)
 - Missing Critical Documents:                         -0 (all present)
-- Missing Critical Fields:                            -0 (all complete)
-- Low Confidence Documents:                           -0 (all ≥ 70%)
-- Name Mismatches:                                     -0 (all match)
-- Death Date Outside Contract Period:                -25 (death 02/01/2025, contract ends 31/12/2024)
+- Missing Critical Fields:                           -15 (missing policy number)
+- Low Confidence Documents:                          -10 (CNI at 45%)
+- Name Mismatches:                                    -0 (all match)
+- Death Date Outside Contract Period:                -25 (death before contract start)
 ─────────────────────────────────────────────────────────
-FINAL SCORE: 45 ❌ REJECT
+FINAL SCORE: 30 ❌ REJECT
 
-Death date: 02/01/2025
-Contract end date: 31/12/2024
-Status: ❌ NO COVERAGE (Contract expired)
+Death date: 15/12/2023
+Contract start date: 01/01/2024
+Status: ❌ NO COVERAGE (Death before contract effective)
 ```
 
 **Why it fails**:
-- ❌ Death occurred AFTER insurance contract ended
+- ❌ Death occurred BEFORE insurance contract started
 - ❌ No active coverage at time of death
 - ❌ Claim cannot be processed per policy terms
+- ❌ Missing policy number in contract
 
-**Action**: Reject claim + Inform beneficiary that claim is not covered
-
----
-
-### Name Matching Logic
-
-The system checks these name matches:
-
-```
-1. Deceased (Death Cert) == Subscriber (Contract)
-   Reason: Verifies insured person matches death certificate
-
-2. Beneficiary (Contract) ≈ Account Holder (RIB)
-   Reason: Verifies payment recipient is authorized
-
-3. Name (CNI) == Subscriber (Contract)
-   Reason: Verifies ID matches insurance subscriber
-
-4. Name (Proof of Residence) == Subscriber (Contract)
-   Reason: Verifies address owner matches subscriber
-```
-
-**Matching Algorithm**:
-- Case-insensitive ("Jean" = "jean")
-- Ignores extra spaces ("Jean  Dupont" = "Jean Dupont")
-- Allows slight variations ("Jean Dupont" ≈ "Dupont Jean")
+**Action**: Reject claim + Inform beneficiary that death was before coverage commenced
 
 ---
 
-### Date Logic Rules
+## 📖 Quick Start Guide
 
-**Critical Date Checks**:
-
-```
-Rule 1: Death Date Must Be Within Contract Period
-────────────────────────────────────────────────────
-Contract.effective_date ≤ Death.death_date ≤ Contract.end_date
-
-✅ VALID:   Death 10/01/2025, Contract 01/01/2025 - 31/12/2025
-❌ INVALID: Death 02/01/2025, Contract 01/01/2025 - 31/12/2024 (expired)
-❌ INVALID: Death 15/12/2024, Contract 01/01/2025 - 31/12/2025 (not started)
-```
-
----
-
-## Usage Guide
-
-### Step-by-Step Workflow
-
-#### Step 1: Prepare Documents
-
-Gather all required documents:
-- ✅ **Death Certificate** (mandatory)
-- ✅ **Insurance Contract** (mandatory)
-- ✅ **RIB/IBAN** (mandatory)
-- ⚠️ **CNI/Passport** (highly recommended)
-- ⚠️ **Proof of Residence** (recommended)
-
-**Document Quality Tips**:
-- Scan at 300+ DPI
-- Ensure all text is readable and not cut off
-- Use good lighting (if photographing)
-- Avoid reflections and shadows
-- Keep pages straight (not tilted)
-
-#### Step 2: Access Application
+### 1. Installation
 
 ```bash
-streamlit run app_multi_doc.py
+# Install dependencies
+pip install streamlit pymupdf easyocr groq python-dotenv
+
+# Create required directories
+mkdir validated_docs review_needed invalid_docs logs
+
+# Create .env file with your Groq API key
+echo "GROQ_API_KEY=your_key_here" > .env
 ```
 
-Open browser to: `http://localhost:8501`
+### 2. Get Groq API Key
 
-#### Step 3: Upload Documents
+1. Go to https://console.groq.com
+2. Sign up (free account)
+3. Create new API key
+4. Add to `.env` file
 
-1. Click: "Déposez vos documents (PDF, PNG, JPG)"
-2. Select all 4-5 documents
-3. Wait for files to upload
-4. Review file list
+### 3. Run the Application
 
-#### Step 4: Launch Validation
+```bash
+streamlit run app.py
+```
 
-1. Click: "🔍 Lancer la Validation Croisée"
-2. Wait for analysis (2-5 minutes)
-3. Progress indicator shown
+The app opens at `http://localhost:8501`
 
-#### Step 5: Review Individual Results
+### 4. Upload Documents
 
-For each document:
-- Document type detected
-- Confidence score (0-100)
-- Extracted data fields
-- Any fraud indicators
+1. Click upload area
+2. Select 4 required documents:
+   - CNI/Passport
+   - Death Certificate
+   - Insurance Contract
+   - Bank Account (RIB/IBAN)
+3. Click "Lancer l'audit IA (dossier)"
 
-#### Step 6: Review Cross-Validation
+### 5. Review Results
 
-- Overall score calculation
-- Score breakdown with deductions
-- Name matching results
-- Date logic validation
-- Missing documents/fields
-
-#### Step 7: Check Final Decision
-
-**IF Score > 50**:
-- ✅ Status: ACCEPTED
-- 📁 Files stored in: `validated_docs/`
-- ✓ Ready for processing
-
-**IF Score ≤ 50**:
-- ❌ Status: REJECTED
-- 📁 Files stored in: `rejected_docs/`
-- ⚠️ Requires investigation or resubmission
+The system displays:
+- Individual document analysis (per document)
+- Cross-validation results (across documents)
+- Score breakdown with logical deductions
+- Final recommendation (ACCEPT/REVIEW/REJECT)
 
 ---
 
-## File Structure
+## 📁 File Structure
 
 ```
-Assurance_doc_hacka/
+Smart-Assurance-ValidatorX/
 │
 ├── 🚀 APPLICATION FILES
-│   ├── app_multi_doc.py                 # Main app (use this!)
-│   ├── appOld.py                        # Legacy single-doc app
-│   └── validator.py                     # Compatibility wrapper
+│   ├── app.py                          # Main Streamlit app (USE THIS!)
+│   ├── validator.py                    # Validation engine + cross-validation
+│   └── security.py                     # Security & audit functions
 │
-├── 🔧 VALIDATION ENGINE
-│   ├── multi_doc_validator.py           # Core validator
-│   │   ├── MultiDocValidator class
-│   │   ├── validate_single_document()
-│   │   ├── cross_validate_documents()
-│   │   └── compute_cross_validation_score()
-│   │
-│   └── validatorOld.py                  # Legacy (optional)
+├── 🔧 UTILITIES
+│   ├── utils.py                        # Validation helpers (IBAN, CIN, dates)
+│   └── fingerprints.json               # Duplicate detection cache
 │
 ├── 📁 DOCUMENT STORAGE
-│   ├── validated_docs/                  # ✅ Accepted claims
-│   ├── rejected_docs/                   # ❌ Rejected claims
-│   └── temp_uploads/                    # Temporary files
+│   ├── validated_docs/                 # ✅ ACCEPT decisions (auto-organized by case_id)
+│   ├── review_needed/                  # ⏳ REVIEW decisions (requires manual review)
+│   ├── invalid_docs/                   # ❌ Manual rejections only
+│   └── uploads_tmp/                    # Temporary files (auto-cleaned)
+│
+├── 📊 AUDIT & LOGS
+│   ├── audit_trail.db                  # SQLite database of all decisions
+│   └── logs/audit.log                  # Text log file
 │
 ├── ⚙️ CONFIGURATION
-│   └── .env                             # API keys (create this!)
+│   └── .env                            # API keys (CREATE THIS!)
 │
-├── 📚 DOCUMENTATION
-│   ├── README.md                        # This file
-│   └── README_MULTI_DOC.md              # Technical details
-│
-└── 🧪 TESTING
-    ├── demo.py                          # French test PDFs
-    └── demo_morocco.py                  # Moroccan test PDFs
-```
-
----
-
-## Troubleshooting
-
-### ❌ "ModuleNotFoundError: No module named 'validator'"
-
-**Solution**: Ensure `validator.py` exists in project root.
-
-```bash
-# Check if file exists
-ls validator.py
-
-# If missing, create it:
-echo "from validatorOld import InsuranceValidator" > validator.py
-```
-
----
-
-### ❌ "GROQ_API_KEY not found"
-
-**Solution**: Create `.env` file with your API key.
-
-```bash
-# Create .env file
-echo "GROQ_API_KEY=your_key_here" > .env
-
-# Verify it exists
-cat .env
-```
-
----
-
-### ❌ "ModuleNotFoundError: No module named 'streamlit'"
-
-**Solution**: Install all dependencies.
-
-```bash
-pip install streamlit pymupdf easyocr groq python-dotenv
-```
-
----
-
-### ⏳ "OCR is very slow"
-
-**Normal**: First run downloads ~500MB OCR model (5-10 minutes).
-
-**Solutions**:
-- ✅ Be patient on first run
-- ✅ Subsequent runs are much faster (model cached)
-- ✅ Use PNG instead of PDF (faster)
-- ✅ Use high-quality scans (300+ DPI)
-
----
-
-### 📊 "Score always below 50"
-
-**Common causes**:
-
-1. **Missing documents** → Upload all 5 documents
-2. **Fraud detected** → Use original, unedited documents
-3. **Name mismatches** → Verify names match exactly
-4. **Date issues** → Check death date within contract period
-5. **Low confidence** → Provide clearer scans
-
----
-
-### 🔍 "Extracted data looks wrong"
-
-**Tips for better extraction**:
-
-1. **High-quality scans**: 300+ DPI, high contrast
-2. **Clear text**: Avoid faded or handwritten text
-3. **Good lighting**: If photographing, use bright light
-4. **Readable fonts**: Avoid decorative fonts
-5. **Proper format**: Dates in DD/MM/YYYY
-
----
-
-### 🔐 "API calls failing"
-
-**Check**:
-1. Valid API key at https://console.groq.com
-2. Internet connection working
-3. Not rate-limited (30 requests/min free tier)
-4. `.env` file properly configured
-
----
-
-## Advanced Configuration
-
-### Change LLM Model
-
-Edit `multi_doc_validator.py` line ~180:
-
-```python
-# Current
-model="llama-3.3-70b-versatile"
-
-# Other options:
-model="llama-3.1-70b-versatile"
-model="mixtral-8x7b-32768"
-```
-
-### Add New Document Type
-
-Edit `multi_doc_validator.py` in `__init__`:
-
-```python
-self.document_types = {
-    "your_type": {
-        "keywords": ["keyword1", "keyword2"],
-        "fields": ["field1", "field2"]
-    }
-}
-```
-
-### Adjust Fraud Detection
-
-Edit `analyze_technical_integrity()`:
-
-```python
-# Add new fraud tools
-fraud_tools = ['canva', 'photoshop', 'illustrator', 'gimp', 'your_tool']
-
-# Change font threshold
-len(unique_fonts) > 8  # Changed from 6
-```
-
-### Modify Scoring Rules
-
-Edit `compute_cross_validation_score()` to change deductions:
-
-```python
-# Example: Increase fraud penalty
-if fraud_found:
-    score -= 75  # Changed from -50
-
-# Example: Add new rule
-if some_condition:
-    score -= 30
+└── 📚 DOCUMENTATION
+    ├── README.md                       # This file
+    └── requirements.txt                # Python dependencies
 ```
 
 ---
 
 ## 🔐 Security & Privacy
 
-- ✅ Files stored locally (validated_docs / rejected_docs)
+- ✅ Files stored locally (validated_docs, review_needed, invalid_docs)
 - ✅ Temporary files auto-deleted after processing
 - ✅ No data sent to external services except Groq API
-- ✅ GROQ_API_KEY stored in local .env (not in code)
-- ✅ No personally identifiable information logged or stored
+- ✅ GROQ_API_KEY stored in local .env (never in code)
+- ✅ Audit trail stored locally (no personally identifiable information logged)
+- ✅ File hashing for duplicate detection
+- ✅ Fingerprint-based duplicate prevention
 
 ---
 
-## 📈 API Integration
+## 🛠️ Technical Implementation
+
+### Architecture
+
+```
+┌─────────────────────┐
+│   Streamlit UI      │ (app.py)
+│  - File upload      │
+│  - Results display  │
+└──────────┬──────────┘
+           │
+┌──────────▼──────────────────────┐
+│  Document Processing Pipeline   │
+├─────────────────────────────────┤
+│ 1. Extract: OCR + Structure     │ (validator.py:extract_all)
+│ 2. Analyze: Technical integrity │ (validator.py:analyze_technical_integrity)
+│ 3. Classify: Document type      │ (validator.py:validate_with_groq)
+│ 4. Extract: Fields via LLM      │ (Groq API - llama-3.3-70b-versatile)
+│ 5. Validate: Format checks      │ (validator.py:_validate_extracted_data)
+└──────────┬──────────────────────┘
+           │
+┌──────────▼──────────────────────┐
+│  Cross-Validation Module (NEW)  │
+├─────────────────────────────────┤
+│ 1. Compute Individual Scores    │ (compute_individual_confidence_score)
+│ 2. Cross-validate Documents     │ (cross_validate_documents)
+│ 3. Apply Logical Scoring Rules  │ (compute_cross_validation_score)
+│ 4. Generate Score Breakdown     │ (score_breakdown with deductions)
+└──────────┬──────────────────────┘
+           │
+┌──────────▼──────────────────────┐
+│  Decision & Storage             │
+├─────────────────────────────────┤
+│ IF score >= 70: ACCEPT          │
+│ ELSE IF score >= 50: REVIEW     │
+│ ELSE: REJECT                    │
+│                                 │
+│ Store in appropriate folder     │
+│ Log to audit_trail.db           │
+└─────────────────────────────────┘
+```
+
+### Validation Rules Implementation
+
+All rules are implemented in `validator.py`:
+
+- **Individual Scoring**: `compute_individual_confidence_score()` method
+- **Cross-Validation**: `compute_cross_validation_score()` method
+- **Name Matching**: `_names_match()` method with fuzzy logic
+- **Batch Processing**: `process_document_batch()` method
+
+---
+
+## 📋 API Integration
 
 The system uses **Groq API** with `llama-3.3-70b-versatile` model:
+
 - **Fast Processing**: Llama 3.3-70B handles complex extraction efficiently
 - **JSON Response Format**: Structured output for reliable parsing
 - **Temperature**: Set to 0 for deterministic, consistent results
-- **Free Tier**: 30 requests/minute, 6,500 requests/day available
+- **Model**: llama-3.3-70b-versatile (fast & accurate)
 
-**Get API Key**: https://console.groq.com
-
----
-
-## 🧪 Testing
-
-### Generate Sample Documents
-
-```bash
-python demo.py                  # French test documents
-python demo_morocco.py          # Moroccan test documents
+**API Call Example**:
+```python
+chat = client.chat.completions.create(
+    model="llama-3.3-70b-versatile",
+    messages=[{"role": "user", "content": prompt}],
+    temperature=0,
+    response_format={"type": "json_object"}
+)
 ```
 
-### Manual Testing Workflow
+---
 
-1. Run: `streamlit run app_multi_doc.py`
-2. Upload generated PDFs
-3. Click "🔍 Lancer la Validation Croisée"
-4. Review individual & cross-validation results
-5. Check `validated_docs/` or `rejected_docs/` folders
+## 🧪 Testing & Validation
+
+### Manual Test Workflow
+
+1. Run: `streamlit run app.py`
+2. Upload test documents
+3. Click "Lancer l'audit IA (dossier)"
+4. Review individual and cross-validation results
+5. Check case folder in `validated_docs/` or `review_needed/`
+
+### Test Cases Included
+
+- ✅ Valid complete dossier → Score 100 → ACCEPT
+- ⚠️ Name mismatch → Score 55 → REVIEW
+- ❌ Death before coverage → Score 30 → REJECT
+- 🚩 Fraud detected → Score 0 → REVIEW
 
 ---
 
-## 🛡️ Fraud Detection Indicators
+## ⚙️ Configuration & Customization
 
-The system automatically flags:
-- ✋ **Suspicious metadata** (Photoshop, Canva, GIMP, Illustrator, etc.)
-- 🔤 **Excessive font variations** (>6 unique fonts indicates tampering)
-- 🔗 **Name inconsistencies** across documents (identity mismatch)
-- 📅 **Date logic violations** (death outside contract period)
-- 🚩 **Missing critical fields** (incomplete documents)
+### Change LLM Model
+
+Edit `app.py` or `validator.py`:
+
+```python
+model="llama-3.3-70b-versatile"  # Current
+# Other options:
+model="llama-3.1-70b-versatile"
+model="mixtral-8x7b-32768"
+```
+
+### Adjust Fraud Detection Sensitivity
+
+Edit `validator.py` `analyze_technical_integrity()`:
+
+```python
+# Font threshold (default: 8)
+potential_tampering = bool(is_suspicious_tool or font_count > 6)  # More strict
+
+# Add more fraud tools
+fraud_tools = ["canva", "photoshop", "figma", "custom_tool"]
+```
+
+### Modify Scoring Rules
+
+Edit `validator.py` `compute_cross_validation_score()`:
+
+```python
+# Example: Increase name mismatch penalty
+name_deduction = min(len(all_mismatches) * 30, 80)  # Was 20, now 30
+
+# Example: Add new validation rule
+if some_condition:
+    score -= 15
+    deductions.append("New rule description (-15)")
+```
 
 ---
 
-## Quick Reference
+## 🔍 Troubleshooting
 
-### Command Cheatsheet
+### "GROQ_API_KEY not found"
+
+**Solution**: Create `.env` file with your API key
 
 ```bash
-# Run application
-streamlit run app_multi_doc.py
+echo "GROQ_API_KEY=your_key_here" > .env
+```
 
-# Install dependencies
+### "ModuleNotFoundError: No module named..."
+
+**Solution**: Install all dependencies
+
+```bash
 pip install streamlit pymupdf easyocr groq python-dotenv
-
-# Clear archives
-rm -rf validated_docs/*
-rm -rf rejected_docs/*
 ```
 
-### Score Decision Table
+### OCR is very slow
 
-```
-Score Range | Status         | Action
-─────────────────────────────────────────
-≥ 70        | VALID          | ✅ Accept
-50-69       | QUESTIONABLE   | ⚠️ Investigate
-< 50        | INVALID        | ❌ Reject
-```
+**Normal**: First run downloads ~500MB OCR model (5-10 minutes).  
+**Solution**: Be patient on first run. Subsequent runs are much faster (model is cached).
 
-### Document Priority
+### Scores always low
 
-```
-CRITICAL (must have):
-□ Death Certificate
-□ Insurance Contract
-□ RIB/IBAN
-
-IMPORTANT (should have):
-□ CNI/Passport
-□ Proof of Residence
-```
+**Common Causes**:
+- Missing documents → Add all required documents
+- Names don't match → Verify names are identical across documents
+- Fraud detected → Check document quality, avoid edited PDFs
+- Date issues → Ensure death date is after contract start date
 
 ---
 
-## 📝 Future Enhancements
+## 📈 Future Enhancements
 
-- [ ] Support for additional document types (Medical reports, notary acts)
-- [ ] Real-time fraud database integration
-- [ ] Machine learning-based scoring refinement
-- [ ] Multi-language support expansion (Spanish, German, Arabic)
-- [ ] REST API endpoint for programmatic access
-- [ ] Batch processing scheduling and automation
-- [ ] Detailed audit logs and detailed reporting
-
----
-
-## Support & FAQ
-
-**Q: How accurate is the system?**  
-A: ~95% for well-scanned documents. Accuracy depends on scan quality, completeness, and text clarity.
-
-**Q: Can I modify the scoring?**  
-A: Yes! Edit `multi_doc_validator.py` to change deduction amounts and add custom rules.
-
-**Q: What languages are supported?**  
-A: French and English (primary). For others, edit `self.reader = easyocr.Reader(['fr', 'en'])` and add language codes.
-
-**Q: Can I use a different AI model?**  
-A: Yes! Modify the LLM calls in `validate_single_document()` to use OpenAI, Claude, or other providers.
-
-**Q: How long does processing take?**  
-A: 2-5 minutes depending on document quality. First run is slower (downloads OCR model ~500MB).
-
-**Q: Can I batch process multiple claims?**  
-A: Yes! Use `process_document_batch()` or upload multiple document sets sequentially through the UI.
-
-**Q: What file formats are supported?**  
-A: PDF, PNG, JPG, JPEG. Color or grayscale both supported.
+- [ ] Support for more document types
+- [ ] Multi-language support (Arabic, Spanish, etc.)
+- [ ] Advanced fraud detection (image forensics)
+- [ ] Batch processing UI for multiple cases
+- [ ] Export results to PDF reports
+- [ ] Integration with external databases
+- [ ] Machine learning model for scoring optimization
 
 ---
 
-## Version Information
+## 📞 Support & Contact
 
-- **Version**: 2.0 (Multi-Document Cross-Validation)
-- **Last Updated**: January 26, 2026
-- **Python**: 3.8+
-- **License**: MIT
-- **Author**: Capgemini AI Solutions
+For issues or questions:
+
+1. Check the troubleshooting section above
+2. Review logs in `logs/audit.log`
+3. Check audit trail: `audit_trail.db`
+4. Verify all documents are clear and readable
+5. Ensure .env file exists with valid API key
 
 ---
 
-**Questions?** Review the detailed scoring examples above, check document quality, or verify Groq API key configuration!
+## 📄 License & Usage Policy
+
+- **NEVER auto-reject**: System only recommends ACCEPT or REVIEW
+- **Human-in-the-loop**: Final decisions always reviewed by authorized personnel
+- **Privacy first**: All data processed locally, no external storage
+- **Audit trail**: Complete logging for compliance and verification
+
+---
+
+## 🚀 Getting Started Checklist
+
+- [ ] Install Python 3.8+
+- [ ] Install dependencies: `pip install -r requirements.txt`
+- [ ] Get Groq API key at https://console.groq.com
+- [ ] Create `.env` file with GROQ_API_KEY
+- [ ] Create required directories: `mkdir validated_docs review_needed invalid_docs logs`
+- [ ] Run app: `streamlit run app.py`
+- [ ] Upload test documents
+- [ ] Review results and scoring breakdown
+- [ ] Check audit trail in `audit_trail.db`
+
+---
+
+## Version & Updates
+
+**Current Version**: 2.0 (Multi-Document Cross-Validation)
+
+**Recent Changes**:
+- ✅ Added transparent scoring rules
+- ✅ Added cross-validation logic
+- ✅ Added detailed scoring breakdown display
+- ✅ Added fraud detection improvements
+- ✅ Added confidence score computation
+- ✅ Enhanced UI with cross-validation results
+
+---
+
+**Last Updated**: January 2026  
+**Status**: Production Ready ✅
+
+Bank RIB (with IBAN if available) for payment
+
+Power of attorney or notarized document (special or complex cases)
+
+A case cannot be fully validated if mandatory documents are missing.
 
 
 
+Key Data Extracted
+
+From these documents, the system extracts and analyzes:
+
+Names and surnames
+
+National ID numbers
+
+Dates (birth, death, contract subscription)
+
+Insurance contract number
+
+Beneficiary identity
+
+Bank information (RIB / IBAN)
+
+Legal references (if present)
 
 
+
+Validation Logic
+
+The system compares information between documents to ensure consistency.
+Examples:
+
+The deceased’s identity must match across ID, contract, and death certificate
+
+The beneficiary requesting payment must match the beneficiary stated in the contract
+
+The bank account (RIB) must belong to the beneficiary or be legally justified
+
+
+
+Decision Outcomes
+
+Each case results in one of three decisions:
+
+ACCEPT
+All required documents are present and data is consistent. The case can be processed automatically.
+
+REVIEW
+Missing documents, minor inconsistencies, unclear information, or low document quality. The case is sent to a human agent.
+Strong indicators of fraud or major inconsistencies that invalidate the claim.
+
+
+
+Why Some Cases Are Sent to a Human
+
+The system is not designed to replace humans.
+It deliberately sends cases to human reviewers when:
+
+a required document is missing
+
+extracted data is incomplete or ambiguous
+
+documents contain conflicting information
+
+there are signs of document manipulation
+
+This ensures fairness, safety, and legal compliance.
+
+
+
+Security & Privacy
+
+Because the system handles sensitive personal and financial data:
+
+sensitive fields (ID numbers, RIB, IBAN) are masked in logs and UI
+
+data should be encrypted at rest and in transit
+
+all decisions are traceable through an audit trail
+
+
+
+Project Scope
+
+This project is intended for:
+
+academic projects
+
+hackathons
+
+proof-of-concepts
+
+early-stage validation systems for insurance workflows
+
+It is not a production-ready insurance system, but a structured and realistic demonstration of how AI can assist document validation in life insurance succession!!!!!!
+
+
+
+High-Level Workflow
+
+Document upload (PDF / image)
+
+Document type detection
+
+Text extraction (OCR)
+
+Structured data extraction
+
+Cross-document consistency checks
+
+Risk and anomaly detection
+
+Automatic decision or human review
+
+
+
+Summary
+
+This project demonstrates how artificial intelligence can improve the speed, reliability, and security of épargne-vie succession processing, by validating correct cases automatically and intelligently flagging complex cases for human review.
 
