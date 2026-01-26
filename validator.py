@@ -379,3 +379,370 @@ Réponds UNIQUEMENT en JSON :
 
         groq_result["is_valid"] = (groq_result["decision"] == "ACCEPT")
         return groq_result
+    # ========================================
+    # CROSS-VALIDATION & TRANSPARENT SCORING
+    # ========================================
+
+    def compute_individual_confidence_score(self, doc_type: str, extracted_data: dict, 
+                                            tech_report: dict, fraud_detected: bool) -> int:
+        """
+        Compute confidence score for a single document using transparent logical rules.
+        
+        Scoring Rules (0-100):
+        - Base: 100 points
+        - Fraud Detected or Technical Tampering: -50 points
+        - Missing Critical Fields: -10 per missing field (max -40)
+        - Suspicious Metadata: -10 if suspicious tools detected
+        - Font Inconsistency: -5 if too many fonts (>8)
+        
+        Returns score between 0-100
+        """
+        score = 100
+        deductions = []
+        
+        # RULE 1: Fraud Detection or Technical Tampering (-50)
+        if fraud_detected or tech_report.get("potential_tampering"):
+            score -= 50
+            deductions.append("Fraude détectée ou tampering technique (-50)")
+        
+        # RULE 2: Suspicious Metadata (-10)
+        if tech_report.get("suspicious_metadata"):
+            score -= 10
+            deductions.append("Métadonnées suspectes (-10)")
+        
+        # RULE 3: Font Consistency (-5)
+        font_count = tech_report.get("font_count", 0)
+        if font_count > 8:
+            score -= 5
+            deductions.append(f"Cohérence de police douteuse: {font_count} polices (-5)")
+        
+        # RULE 4: Critical fields presence by document type
+        missing_fields = []
+        critical_fields_map = {
+            "ID": ["beneficiary_name", "beneficiary_cin", "beneficiary_birth_date"],
+            "BANK": ["bank_account_holder", "bank_iban", "bank_bic"],
+            "DEATH": ["deceased_name", "death_date", "death_place"],
+            "LIFE_CONTRACT": ["policy_number", "subscriber_name", "beneficiary_name", "contract_effective_date"],
+        }
+        
+        critical_fields = critical_fields_map.get(doc_type, [])
+        for field in critical_fields:
+            if not extracted_data.get(field) or not str(extracted_data.get(field)).strip():
+                missing_fields.append(field)
+        
+        # Deduct 10 points per missing critical field (max -40)
+        field_deduction = min(len(missing_fields) * 10, 40)
+        if missing_fields:
+            score -= field_deduction
+            deductions.append(f"Champs critiques manquants: {', '.join(missing_fields)} (-{field_deduction})")
+        
+        # Ensure score doesn't go below 0
+        score = max(score, 0)
+        
+        return score
+
+    def compute_cross_validation_score(self, validation_data: dict) -> dict:
+        """
+        Compute cross-validation score using transparent logical rules.
+        
+        Scoring Rules:
+        - Base Score: 100 points
+        - Fraud Detection: -50 if fraud indicators found
+        - Missing Critical Docs: -15 if Death Cert, Contract, or RIB missing
+        - Missing Critical Fields: -15 if essential fields missing
+        - Low Confidence Docs: -10 if overall confidence < 60%
+        - Name Mismatches: -20 per mismatch (max -60)
+        - Date Logic: -25 if death date outside contract period
+        
+        Final Score:
+        - >= 70: VALID (Accept)
+        - 50-69: QUESTIONABLE (Investigate)
+        - < 50: INVALID (Reject)
+        """
+        
+        score = 100
+        deductions = []
+        
+        # Extract key data from all documents
+        deceased_name = None
+        subscriber_name = None
+        beneficiary_name = None
+        account_holder = None
+        death_date = None
+        contract_start = None
+        fraud_found = False
+        low_confidence_docs = []
+        missing_critical_docs = []
+        missing_critical_fields = []
+        name_mismatches = []
+        date_issues = []
+        
+        for file_name, doc_result in validation_data.items():
+            doc_type = doc_result.get("doc_type", "UNKNOWN")
+            extracted = doc_result.get("extracted_data", {})
+            fraud_detected = doc_result.get("fraud_suspected", False)
+            confidence = doc_result.get("score", 0)
+            
+            # Track fraud
+            if fraud_detected:
+                fraud_found = True
+            
+            # Track low confidence
+            if confidence < 60:
+                low_confidence_docs.append(file_name)
+            
+            # Extract critical data by document type
+            if doc_type == "DEATH":
+                deceased_name = (extracted.get("deceased_name") or "").strip()
+                death_date = (extracted.get("death_date") or "").strip()
+                if not deceased_name:
+                    missing_critical_fields.append(f"{file_name}: Nom du défunt manquant")
+                if not death_date:
+                    missing_critical_fields.append(f"{file_name}: Date de décès manquante")
+            
+            elif doc_type == "LIFE_CONTRACT":
+                subscriber_name = (extracted.get("subscriber_name") or "").strip()
+                beneficiary_name = (extracted.get("beneficiary_name") or "").strip()
+                contract_start = (extracted.get("contract_effective_date") or "").strip()
+                policy_num = (extracted.get("policy_number") or "").strip()
+                
+                if not subscriber_name:
+                    missing_critical_fields.append(f"{file_name}: Nom assuré manquant")
+                if not beneficiary_name:
+                    missing_critical_fields.append(f"{file_name}: Nom bénéficiaire manquant")
+                if not policy_num:
+                    missing_critical_fields.append(f"{file_name}: Numéro de police manquant")
+            
+            elif doc_type == "BANK":
+                account_holder = (extracted.get("bank_account_holder") or "").strip()
+                if not account_holder:
+                    missing_critical_fields.append(f"{file_name}: Titulaire du compte manquant")
+            
+            elif doc_type == "ID":
+                id_name = (extracted.get("beneficiary_name") or "").strip()
+                if id_name and beneficiary_name:
+                    if not self._names_match(id_name, beneficiary_name):
+                        name_mismatches.append(f"Nom ID ({id_name}) ≠ Bénéficiaire contrat ({beneficiary_name})")
+        
+        # Check critical documents presence
+        doc_types_present = set()
+        for file_name, doc_result in validation_data.items():
+            dt = doc_result.get("doc_type", "UNKNOWN")
+            if dt != "UNKNOWN":
+                doc_types_present.add(dt)
+        
+        # Critical documents for succession: Death Cert + Contract + Bank Account
+        critical_docs = {"DEATH", "LIFE_CONTRACT", "BANK"}
+        missing_docs = critical_docs - doc_types_present
+        
+        if missing_docs:
+            missing_critical_docs = list(missing_docs)
+        
+        # RULE 1: Fraud Detection (-50 points)
+        if fraud_found:
+            score -= 50
+            deductions.append("Fraude détectée dans un ou plusieurs documents (-50)")
+        
+        # RULE 2: Missing Critical Documents (-15 points)
+        if missing_critical_docs:
+            score -= 15
+            deductions.append(f"Documents critiques manquants: {', '.join(missing_critical_docs)} (-15)")
+        
+        # RULE 3: Missing Critical Fields (-15 points)
+        if missing_critical_fields:
+            score -= 15
+            deductions.append(f"Champs critiques manquants ({len(missing_critical_field)} domaines) (-15)")
+        
+        # RULE 4: Low Confidence Documents (-10 points)
+        if low_confidence_docs:
+            score -= 10
+            deductions.append(f"Confiance faible: {', '.join(low_confidence_docs)} (-10)")
+        
+        # RULE 5: Name Consistency (-20 per mismatch, max -60)
+        all_mismatches = []
+        
+        # Check: Deceased vs Subscriber
+        if deceased_name and subscriber_name:
+            if not self._names_match(deceased_name, subscriber_name):
+                all_mismatches.append("deceased_name ≠ subscriber_name")
+        
+        # Check: Beneficiary vs Account Holder
+        if beneficiary_name and account_holder:
+            if not self._names_match(beneficiary_name, account_holder):
+                all_mismatches.append("beneficiary_name ≠ account_holder")
+        
+        all_mismatches.extend(name_mismatches)
+        
+        # Apply name mismatch deductions (max -60)
+        name_deduction = min(len(all_mismatches) * 20, 60)
+        if all_mismatches:
+            score -= name_deduction
+            deductions.append(f"Incohérences de noms: {len(all_mismatches)} ({', '.join(all_mismatches[:2])}) (-{name_deduction})")
+        
+        # RULE 6: Date Logic Validity (-25 points)
+        date_logic_valid = True
+        
+        if death_date and contract_start:
+            try:
+                from datetime import datetime
+                death_dt = datetime.strptime(death_date.split()[0], "%d/%m/%Y") if death_date else None
+                start_dt = datetime.strptime(contract_start.split()[0], "%d/%m/%Y") if contract_start else None
+                
+                if death_dt and start_dt:
+                    # Death should be after or on contract effective date (no end date check as per policy)
+                    if death_dt < start_dt:
+                        date_logic_valid = False
+                        date_issues.append(f"Décès ({death_date}) avant date d'effet du contrat ({contract_start})")
+                        score -= 25
+                        deductions.append(f"Logique de dates invalide (-25)")
+            except Exception as e:
+                date_logic_valid = False
+                date_issues.append(f"Erreur parsing dates: {str(e)}")
+                score -= 25
+                deductions.append(f"Format de date invalide (-25)")
+        
+        # Ensure score doesn't go below 0
+        score = max(score, 0)
+        
+        # Determine validation status
+        if score >= 70:
+            status = "VALID"
+            recommendation = "ACCEPT"
+        elif score >= 50:
+            status = "QUESTIONABLE"
+            recommendation = "INVESTIGATE"
+        else:
+            status = "INVALID"
+            recommendation = "REJECT"
+        
+        # Build detailed reason
+        if deductions:
+            reason_text = "Calcul du score: " + " | ".join(deductions)
+        else:
+            reason_text = "Tous les critères de validation sont satisfaits."
+        
+        return {
+            "is_valid": score > 50,
+            "overall_score": score,
+            "cross_validation_status": status,
+            "score_breakdown": {
+                "base_score": 100,
+                "deductions": deductions,
+                "final_score": score
+            },
+            "name_matches": {
+                "deceased_vs_subscriber": deceased_name and subscriber_name and self._names_match(deceased_name, subscriber_name),
+                "beneficiary_vs_account_holder": beneficiary_name and account_holder and self._names_match(beneficiary_name, account_holder),
+                "mismatches_found": all_mismatches
+            },
+            "date_logic_valid": date_logic_valid,
+            "date_issues": date_issues,
+            "critical_documents_present": len(missing_docs) == 0,
+            "missing_documents": missing_critical_docs,
+            "missing_fields": missing_critical_fields,
+            "fraud_indicators": ["Fraude détectée"] if fraud_found else [],
+            "low_confidence_documents": low_confidence_docs,
+            "discrepancies": all_mismatches + date_issues,
+            "recommendation": recommendation,
+            "detailed_reason": reason_text
+        }
+
+    def _names_match(self, name1: str, name2: str, threshold: float = 0.70) -> bool:
+        """
+        Check if two names match using fuzzy matching.
+        Case-insensitive, ignores extra spaces.
+        """
+        n1 = re.sub(r"\s+", " ", (name1 or "").strip().lower())
+        n2 = re.sub(r"\s+", " ", (name2 or "").strip().lower())
+        
+        if not n1 or not n2:
+            return False
+        
+        # Exact match
+        if n1 == n2:
+            return True
+        
+        # Check if names contain same word elements
+        words1 = set(re.findall(r"[a-zàâçéèêëîïôùûüÿñ]+", n1))
+        words2 = set(re.findall(r"[a-zàâçéèêëîïôùûüÿñ]+", n2))
+        
+        if not words1 or not words2:
+            return False
+        
+        # Calculate similarity ratio
+        common = len(words1 & words2)
+        total = len(words1 | words2)
+        ratio = common / total if total > 0 else 0
+        
+        return ratio >= threshold
+
+    def cross_validate_documents(self, documents: dict) -> dict:
+        """
+        Cross-validate multiple documents and compute score using logical rules.
+        
+        Args:
+            documents: Dict with file_name as key and validation result as value
+        
+        Returns:
+            Cross-validation result with logical rule-based score
+        """
+        try:
+            return self.compute_cross_validation_score(documents)
+        
+        except Exception as e:
+            return {
+                "is_valid": False,
+                "overall_score": 0,
+                "cross_validation_status": "ERROR",
+                "score_breakdown": {
+                    "base_score": 100,
+                    "deductions": [f"Erreur système: {str(e)}"],
+                    "final_score": 0
+                },
+                "name_matches": {},
+                "date_logic_valid": False,
+                "critical_documents_present": False,
+                "missing_documents": [],
+                "missing_fields": [],
+                "fraud_indicators": ["Erreur lors de la validation"],
+                "low_confidence_documents": [],
+                "discrepancies": [],
+                "recommendation": "REVIEW",
+                "detailed_reason": f"Erreur de validation: {str(e)}"
+            }
+
+    def process_document_batch(self, file_paths: list) -> tuple:
+        """
+        Process a batch of documents: validate individually, then cross-validate.
+        
+        Returns:
+            Tuple of (individual_results dict, cross_validation_result dict)
+        """
+        individual_results = {}
+        
+        for file_path in file_paths:
+            if not os.path.exists(file_path):
+                continue
+            
+            file_name = os.path.basename(file_path)
+            
+            # Individual validation
+            text, struct, tech_report = self.extract_all(file_path)
+            result = self.validate_with_groq(text, struct, tech_report)
+            
+            # Compute individual confidence score
+            fraud_detected = result.get("fraud_suspected", False) or tech_report.get("potential_tampering")
+            confidence_score = self.compute_individual_confidence_score(
+                result.get("doc_type", "UNKNOWN"),
+                result.get("extracted_data", {}),
+                tech_report,
+                fraud_detected
+            )
+            
+            result["confidence_score"] = confidence_score
+            individual_results[file_name] = result
+        
+        # Perform cross-validation
+        cross_validation_result = self.cross_validate_documents(individual_results)
+        
+        return individual_results, cross_validation_result

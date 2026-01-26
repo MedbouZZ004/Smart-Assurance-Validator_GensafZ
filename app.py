@@ -310,6 +310,145 @@ def cross_document_validation(doc_results: list[dict]) -> tuple[bool, list[str]]
 
     return (len(issues) == 0), issues
 
+# ==================================
+# CROSS-VALIDATION METHODS (NEW)
+# ==================================
+def compute_batch_cross_validation(doc_results: list[dict]) -> dict:
+    """
+    Perform cross-validation across all documents using new transparent scoring rules.
+    """
+    if not doc_results:
+        return {
+            "overall_score": 0,
+            "status": "UNKNOWN",
+            "recommendation": "REVIEW",
+            "issues": ["No documents to validate"]
+        }
+    
+    # Prepare individual validation data
+    validation_data = {}
+    for d in doc_results:
+        r = d.get("result", {})
+        validation_data[d["file_name"]] = {
+            "doc_type": r.get("doc_type", "UNKNOWN"),
+            "extracted_data": r.get("extracted_data", {}),
+            "fraud_suspected": r.get("fraud_suspected", False),
+            "score": r.get("score", 0)
+        }
+    
+    # Use validator's cross-validation method
+    cross_result = validator.cross_validate_documents(validation_data)
+    return cross_result
+
+def display_cross_validation_results(cross_validation: dict) -> None:
+    """
+    Display cross-validation results with transparent scoring breakdown.
+    """
+    st.divider()
+    st.subheader("🔗 Résultat de Validation Croisée")
+    
+    overall_score = cross_validation.get("overall_score", 0)
+    status = cross_validation.get("cross_validation_status", "UNKNOWN")
+    recommendation = cross_validation.get("recommendation", "UNKNOWN")
+    is_valid = cross_validation.get("is_valid", False)
+    
+    # Key metrics
+    col_score, col_status, col_recommendation = st.columns(3)
+    
+    with col_score:
+        st.metric("Score Global", f"{overall_score}/100")
+    
+    with col_status:
+        status_color = "🟢" if status == "VALID" else "🟠" if status == "QUESTIONABLE" else "🔴"
+        st.metric("Statut", f"{status_color} {status}")
+    
+    with col_recommendation:
+        rec_color = "✅" if recommendation == "ACCEPT" else "❌" if recommendation == "REJECT" else "⚠️"
+        st.metric("Recommandation", f"{rec_color} {recommendation}")
+    
+    # Score Breakdown with Logical Rules
+    st.write("**📊 Détail du Calcul du Score:**")
+    score_breakdown = cross_validation.get("score_breakdown", {})
+    
+    if score_breakdown:
+        col_base, col_final = st.columns(2)
+        with col_base:
+            st.metric("Score de Base", score_breakdown.get("base_score", 100))
+        with col_final:
+            st.metric("Score Final", score_breakdown.get("final_score", 0))
+        
+        deductions = score_breakdown.get("deductions", [])
+        if deductions:
+            st.write("**Déductions appliquées:**")
+            for deduction in deductions:
+                st.write(f"- {deduction}")
+    
+    # Detailed Analysis
+    st.write("**Analyse Détaillée:**")
+    
+    col_names, col_dates = st.columns(2)
+    
+    with col_names:
+        st.write("**Correspondance des Noms:**")
+        name_matches = cross_validation.get("name_matches", {})
+        if name_matches.get("deceased_vs_subscriber") is not None:
+            st.write(f"- Défunt ↔️ Assuré: {'✅' if name_matches.get('deceased_vs_subscriber') else '❌'}")
+        if name_matches.get("beneficiary_vs_account_holder") is not None:
+            st.write(f"- Bénéficiaire ↔️ Titulaire: {'✅' if name_matches.get('beneficiary_vs_account_holder') else '❌'}")
+        if name_matches.get("mismatches_found"):
+            st.write("**Incohérences détectées:**")
+            for mismatch in name_matches.get("mismatches_found", []):
+                st.write(f"- {mismatch}")
+    
+    with col_dates:
+        st.write("**Logique des Dates:**")
+        date_logic = cross_validation.get("date_logic_valid", False)
+        st.write(f"Dates cohérentes: {'✅ OUI' if date_logic else '❌ NON'}")
+        if cross_validation.get("date_issues"):
+            for issue in cross_validation.get("date_issues", []):
+                st.write(f"- {issue}")
+    
+    # Critical Documents and Fields
+    col_docs, col_fields = st.columns(2)
+    with col_docs:
+        st.write("**Documents Critiques:**")
+        if cross_validation.get("critical_documents_present"):
+            st.success("✅ Tous les documents critiques présents")
+        else:
+            missing = cross_validation.get("missing_documents", [])
+            st.error(f"❌ Documents manquants: {', '.join(missing) if missing else 'Unknown'}")
+    
+    with col_fields:
+        st.write("**Champs Critiques:**")
+        missing_fields = cross_validation.get("missing_fields", [])
+        if missing_fields:
+            st.error(f"❌ Champs manquants: {len(missing_fields)}")
+            for field in missing_fields[:3]:  # Show first 3
+                st.write(f"- {field}")
+            if len(missing_fields) > 3:
+                st.write(f"- ... et {len(missing_fields) - 3} autres")
+        else:
+            st.success("✅ Tous les champs critiques présents")
+    
+    # Fraud and Discrepancies
+    if cross_validation.get("fraud_indicators"):
+        st.warning("🚩 **Indicateurs de Fraude Détectés:**")
+        for fraud in cross_validation.get("fraud_indicators", []):
+            st.write(f"- {fraud}")
+    
+    if cross_validation.get("low_confidence_documents"):
+        st.warning("⚠️ **Documents avec Faible Confiance:**")
+        for doc in cross_validation.get("low_confidence_documents", []):
+            st.write(f"- {doc}")
+    
+    if cross_validation.get("discrepancies"):
+        st.error("⚠️ **Incohérences Détectées:**")
+        for disc in cross_validation.get("discrepancies", [])[:5]:  # Show first 5
+            st.write(f"- {disc}")
+    
+    st.write("**Explication Détaillée:**")
+    st.info(cross_validation.get("detailed_reason", "No explanation provided"))
+
 def compute_case_decision(doc_results: list[dict]) -> tuple[str, str]:
     if not doc_results:
         return "REVIEW", "Aucun document analysé."
@@ -469,9 +608,12 @@ if st.button("Lancer l'audit IA (dossier)", type="primary"):
         st.warning("Aucun document analysé.")
         st.stop()
 
-    # -----------------------------
+    # ====================================
+    # CROSS-VALIDATION ANALYSIS (NEW)
+    # ====================================
+    cross_validation_result = compute_batch_cross_validation(doc_results)
+
     # DOSSIER DECISION
-    # -----------------------------
     case_decision, case_reason = compute_case_decision(doc_results)
 
     dest_root = VALID_DIR if case_decision == "ACCEPT" else REVIEW_DIR
@@ -559,6 +701,9 @@ if st.button("Lancer l'audit IA (dossier)", type="primary"):
         })
 
     st.dataframe(rows, use_container_width=True)
+
+    # Display Cross-Validation Results
+    display_cross_validation_results(cross_validation_result)
 
     st.divider()
     st.subheader("Détails")
