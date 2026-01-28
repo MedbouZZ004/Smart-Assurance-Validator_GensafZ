@@ -336,8 +336,6 @@ for expected_type, uf in inputs:
 
 case_decision, case_reason, case_issues = compute_case_decision(doc_results)
 
-case_issues = []
-
 # Get names/CNEs from our main variables
 id_data = next((d for d in doc_results if d["expected_type"] == "ID"), None)
 bank_data = next((d for d in doc_results if d["expected_type"] == "BANK"), None)
@@ -416,8 +414,6 @@ for d in doc_results:
     r = d["result"]
     ex = r.get("extracted_data", {}) or {}
     holder, rib, iban = safe_get_bank_fields(ex)
-
-        # app.py
 
     # ... inside your loop where you define 'ex' (extracted_data) ...
 

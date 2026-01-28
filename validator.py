@@ -8,12 +8,13 @@ import streamlit as st
 from groq import Groq
 from dotenv import load_dotenv
 from datetime import datetime, date, timedelta
-
 from utils import (
     validate_iban,
     validate_date_format,
     validate_rib_morocco,
+    build_iban_ma,
 )
+
 
 load_dotenv()
 
@@ -346,7 +347,7 @@ TYPE: BANK
     "bank_code_ville": "640",
     "bank_numero_compte": "1234567890123456",
     "bank_cle_rib": "78",
-    "bank_iban": "MA64011640000012345678901278"
+    "bank_iban": "MA64230270457496521100710060"
   }},
   "format_validation": {{
     "dates_format_valid": true,
@@ -360,7 +361,7 @@ TYPE: BANK
 TYPE: DEATH
 {{
   "decision": "REVIEW",
-  "score": 90,
+  "score": 85,
   "country": "MAROC",
   "doc_type": "DEATH",
   "fraud_suspected": false,
@@ -522,50 +523,91 @@ TYPE: LIFE_CONTRACT
 
         # BANK rules
         elif dt == "BANK":
-            holder = _norm_spaces(extracted.get("bank_account_holder", ""))
-            iban = _norm_spaces(extracted.get("bank_iban", "")).upper().replace(" ", "")
+            ex = extracted  # on travaille sur le dict final
 
-            cb = re.sub(r"\D", "", extracted.get("bank_code_banque", ""))
-            cv = re.sub(r"\D", "", extracted.get("bank_code_ville", ""))
-            nc = re.sub(r"\D", "", extracted.get("bank_numero_compte", ""))
-            kr = re.sub(r"\D", "", extracted.get("bank_cle_rib", ""))
+            holder = _norm_spaces(ex.get("bank_account_holder", ""))
 
-            # Assemble the RIB
-            full_rib = re.sub(r"\D", "", (cb + cv + nc + kr))
+            # --- 0) Lire IBAN OCR (si présent), le nettoyer, et vérifier checksum ---
+            iban_ocr_raw = _norm_spaces(ex.get("bank_iban", "")).upper()
+            iban_ocr_clean = re.sub(r"[^A-Z0-9]", "", iban_ocr_raw)
 
-            # UPDATE: We no longer check if len(full_rib) == 24 or apply penalties.
-            # We just save whatever was found to the extracted data.
-            extracted["bank_rib_code"] = full_rib
+            # si "MA" apparaît au milieu, on découpe à partir de MA sur 28 chars
+            if "MA" in iban_ocr_clean:
+                i = iban_ocr_clean.find("MA")
+                iban_ocr_clean = iban_ocr_clean[i:i + 28]
 
-            # Optional: Keep the format flag 'true' so it doesn't trigger other deductions
-            fv["rib_format_valid"] = True
+            use_iban_as_source = False
+            if len(iban_ocr_clean) == 28:
+                ok_ocr_iban, _msg = validate_iban(iban_ocr_clean)
+                if ok_ocr_iban:
+                    use_iban_as_source = True
 
-            if not holder:
-                format_errors.append("bank_account_holder manquant.")
+            if use_iban_as_source:
+                # --- 1) SOURCE DE VÉRITÉ: IBAN OCR valide -> on parse le RIB depuis l’IBAN ---
+                rib24 = iban_ocr_clean[4:]  # après MAxx
 
-            if iban:
-                ok, msg = validate_iban(iban)
-                fv["iban_format_valid"] = bool(ok)
-                if not ok:
-                    format_errors.append(msg)
+                cb = rib24[0:3]
+                cv = rib24[3:6]
+                nc16 = rib24[6:22]
+                kr = rib24[22:24]
 
-            if full_rib:
-                # Instead of strict validation, just check if we have 24 digits
-                is_len_ok = len(full_rib) == 24
-                fv["rib_format_valid"] = is_len_ok
-                #just for now
-                if len(full_rib)==30:
-                    full_rib= full_rib[6:]
-                    is_len_ok= len(full_rib)
-                    fv["rib_format_valid"] = is_len_ok
-                #end just for now
-                if not is_len_ok:
-                    format_errors.append(f"Le RIB doit faire 24 chiffres (reçu: {len(full_rib)})")
-                    # Comment out or remove the strict mathematical check:
-                    # ok, msg = validate_rib_morocco(rib_24)
+                ex["bank_code_banque"] = cb
+                ex["bank_code_ville"] = cv
+                ex["bank_numero_compte"] = nc16
+                ex["bank_cle_rib"] = kr
+                ex["bank_rib_code"] = rib24
+
+                ok_rib, msg_rib = validate_rib_morocco(rib24)
+                fv["rib_format_valid"] = bool(ok_rib)
+                if not ok_rib:
+                    format_errors.append(msg_rib)
+
+                fv["iban_format_valid"] = True
+                ex["bank_iban"] = iban_ocr_clean
+                ex["bank_iban_reconstructed"] = iban_ocr_clean
+                ex["bank_iban_source"] = "ocr_iban_valid_parsed"
+
             else:
-                fv["rib_format_valid"] = False
-                format_errors.append("RIB manquant (assembler code banque + code ville + n° compte + clé).")
+                # --- 2) FALLBACK: champs OCR -> normalisation -> reconstruction IBAN ---
+                cb = re.sub(r"\D", "", ex.get("bank_code_banque", "") or "").zfill(3)
+                cv = re.sub(r"\D", "", ex.get("bank_code_ville", "") or "").zfill(3)
+                nc = re.sub(r"\D", "", ex.get("bank_numero_compte", "") or "")
+                kr = re.sub(r"\D", "", ex.get("bank_cle_rib", "") or "").zfill(2)
+
+                # compte = 16 chiffres (OCR peut coller banque+ville+compte)
+                if len(nc) > 16:
+                    format_errors.append(
+                        f"Numéro de compte OCR trop long, tronqué à 16 chiffres. Original: {nc}"
+                    )
+                    nc16 = nc[-16:]
+                else:
+                    nc16 = nc.zfill(16)
+
+                rib24 = cb + cv + nc16 + kr
+                ex["bank_rib_code"] = rib24
+
+                ok_rib, msg_rib = validate_rib_morocco(rib24)
+                fv["rib_format_valid"] = bool(ok_rib)
+                if not ok_rib:
+                    format_errors.append(msg_rib)
+
+                iban_rebuilt = build_iban_ma(cb, cv, nc16, kr)
+                ok_iban, msg_iban = validate_iban(iban_rebuilt)
+                fv["iban_format_valid"] = bool(ok_iban)
+                if not ok_iban:
+                    format_errors.append(f"IBAN reconstruit invalide: {msg_iban}")
+
+                # Audit seulement (si IBAN OCR existe mais n’est pas valide/fiable)
+                if iban_ocr_raw and iban_ocr_clean and iban_ocr_clean != iban_rebuilt:
+                    format_errors.append(f"IBAN OCR différent du reconstruit. OCR: {iban_ocr_clean}")
+
+                ex["bank_iban"] = iban_rebuilt
+                ex["bank_iban_reconstructed"] = iban_rebuilt
+                ex["bank_iban_source"] = "reconstructed_from_rib"
+
+            # --- 3) Holder check ---
+            if not holder:
+                format_errors.append("Titulaire du compte (bank_account_holder) manquant.")
 
         # DEATH rules
         elif dt == "DEATH":
@@ -600,7 +642,7 @@ TYPE: LIFE_CONTRACT
                         format_errors.append("Durée manquante/illisible (si pas de date fin).")
                     else:
                         computed_end = eff + td
-                        if computed_end >= today:
+                        if computed_end <= today:
                             format_errors.append("Contrat invalide selon règle projet: date effet + durée doit être < date du jour.")
 
         # scoring / decision

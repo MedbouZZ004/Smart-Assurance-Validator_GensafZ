@@ -20,6 +20,9 @@ from datetime import datetime
 def _strip_spaces(s: str) -> str:
     return re.sub(r"\s+", "", (s or ""))
 
+
+
+
 # In utils.py
 
 def normalize_name(s: str) -> str:
@@ -87,6 +90,40 @@ def validate_iban(iban_str: str) -> tuple:
         return False, "Checksum IBAN invalide"
     except Exception as e:
         return False, f"Erreur vérification IBAN : {str(e)}"
+
+def build_iban_ma(bank_code: str, city_code: str, account_number: str, rib_key: str) -> str:
+    """
+    Construit un IBAN marocain valide à partir des composants RIB.
+    Format MA: MA + checksum(2) + RIB(24)
+    RIB = bank(3) + city(3) + account(16) + key(2)
+    """
+    import re
+
+    bank_code = re.sub(r"\D", "", bank_code or "").zfill(3)
+    city_code = re.sub(r"\D", "", city_code or "").zfill(3)
+    account_number = re.sub(r"\D", "", account_number or "")
+    rib_key = re.sub(r"\D", "", rib_key or "").zfill(2)
+
+    # IMPORTANT: le compte doit faire 16 chiffres
+    if len(account_number) > 16:
+        account_number = account_number[-16:]
+    else:
+        account_number = account_number.zfill(16)
+
+    rib = bank_code + city_code + account_number + rib_key  # 24 digits
+
+    # checksum IBAN
+    rearranged = rib + "MA00"
+    numeric = ""
+    for c in rearranged:
+        if c.isdigit():
+            numeric += c
+        else:
+            numeric += str(ord(c) - 55)
+
+    checksum = 98 - (int(numeric) % 97)
+    return f"MA{checksum:02d}{rib}"
+
 
 
 def validate_rib_morocco(rib_str: str) -> tuple:
