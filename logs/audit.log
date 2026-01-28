@@ -1009,3 +1009,4 @@
 2026-01-28 17:55:26,038 - INFO - HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 200 OK"
 2026-01-28 17:56:03,757 - INFO - HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 200 OK"
 2026-01-28 17:56:34,203 - INFO - HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 200 OK"
+2026-01-28 20:14:46,041 - INFO - Modules de sécurité initialisés
